@@ -1,0 +1,14 @@
+{
+  "$schema": "https://v0.app/schema/v0.json",
+  "preview": {
+    "install": {
+      "cwd": ".",
+      "command": ["npx", "--yes", "serve", "--version"]
+    },
+    "start": {
+      "cwd": ".",
+      "command": ["npx", "--yes", "serve", "-l", "3000", "."]
+    },
+    "port": 3000
+  }
+}
