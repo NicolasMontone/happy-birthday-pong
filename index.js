@@ -3,13 +3,26 @@ const canvas = document.getElementById('canvas')
 canvas.style.background = 'black'
 const ctx = canvas.getContext('2d')
 
-let ballX = 50
-let ballY = 15
-const ballRadius = 15
-let velX = 4
-let velY = 4
+const WIDTH = 800
+const HEIGHT = 800
+const SPEED_UP = 1.05
+const PLAYER_SPEED_UP = 1.03
+const INITIAL_VEL = 4
 
-const playerVel = 15
+// the ball is served from the middle: with the side walls being lethal now,
+// the old top-left spawn was an instant game over.
+let ballX = WIDTH / 2
+let ballY = HEIGHT / 2
+const ballRadius = 15
+let velX = INITIAL_VEL
+let velY = INITIAL_VEL
+
+let hits = 0
+let winner = null
+
+const INITIAL_PLAYER_VEL = 15
+// paddles speed up alongside the ball so they can keep up with the rally
+let playerVel = INITIAL_PLAYER_VEL
 
 const player = {
   x: 50,
@@ -33,6 +46,11 @@ let happyBirthdayCurrentNoteIndex = 0
 
 window.addEventListener('keydown', (event) => {
   console.log(event.key)
+  if (winner && (event.key === 'r' || event.key === 'R')) {
+    restart()
+    return
+  }
+
   switch (event.key) {
     case 'w':
       player.vel = -1
@@ -63,20 +81,126 @@ window.addEventListener('keyup', (event) => {
 const playerMinY = player.height / 2
 const playerMaxY = 800 - player.height / 2
 
-function drawBall() {
-  ballX += velX
-  ballY += velY
+function playNextNote() {
+  playSound(getNoteFrequency(happyBirthdayOverC[happyBirthdayCurrentNoteIndex % happyBirthdayOverC.length]))
+  happyBirthdayCurrentNoteIndex++
+}
 
-  const nextPlayerY = player.y + playerVel * player.vel
+function isTouchingPaddle(paddle) {
+  return (
+    ballX + ballRadius >= paddle.x &&
+    ballX - ballRadius <= paddle.x + paddle.width &&
+    ballY + ballRadius >= paddle.y - paddle.height / 2 &&
+    ballY - ballRadius <= paddle.y + paddle.height / 2
+  )
+}
 
-  if (nextPlayerY > playerMinY && nextPlayerY < playerMaxY) {
-    player.y = nextPlayerY
+function registerHit() {
+  hits++
+  velX *= SPEED_UP
+  velY *= SPEED_UP
+  playerVel *= PLAYER_SPEED_UP
+  playNextNote()
+}
+
+function restart() {
+  ballX = WIDTH / 2
+  ballY = HEIGHT / 2
+  // serve towards whoever just lost
+  velX = velX > 0 ? INITIAL_VEL : -INITIAL_VEL
+  velY = INITIAL_VEL
+  playerVel = INITIAL_PLAYER_VEL
+  hits = 0
+  winner = null
+  happyBirthdayCurrentNoteIndex = 0
+  player.y = 400
+  player2.y = 400
+}
+
+// the ball gets faster on every hit, so a single big jump per frame could
+// teleport it through a paddle. move in small slices instead.
+function moveBall() {
+  const speed = Math.hypot(velX, velY)
+  const steps = Math.max(1, Math.ceil(speed / 8))
+
+  for (let i = 0; i < steps && !winner; i++) {
+    ballX += velX / steps
+    ballY += velY / steps
+
+    if (ballY - ballRadius <= 0) {
+      ballY = ballRadius
+      velY = Math.abs(velY)
+      playNextNote()
+    } else if (ballY + ballRadius >= HEIGHT) {
+      ballY = HEIGHT - ballRadius
+      velY = -Math.abs(velY)
+      playNextNote()
+    }
+
+    if (velX < 0 && isTouchingPaddle(player)) {
+      ballX = player.x + player.width + ballRadius
+      velX = Math.abs(velX)
+      registerHit()
+    } else if (velX > 0 && isTouchingPaddle(player2)) {
+      ballX = player2.x - ballRadius
+      velX = -Math.abs(velX)
+      registerHit()
+    }
+
+    if (ballX - ballRadius <= 0) {
+      winner = 'PLAYER 2'
+    } else if (ballX + ballRadius >= WIDTH) {
+      winner = 'PLAYER 1'
+    }
   }
+}
 
-  const nextPlayer2Y = player2.y + playerVel * player2.vel
+// clamped rather than rejected: as playerVel grows a single step can overshoot
+// the edge, and refusing the whole move would leave the paddle stuck short of it
+function movePaddle(paddle) {
+  const nextY = paddle.y + playerVel * paddle.vel
+  paddle.y = Math.min(Math.max(nextY, playerMinY), playerMaxY)
+}
 
-  if (nextPlayer2Y > playerMinY && nextPlayer2Y < playerMaxY) {
-    player2.y = nextPlayer2Y
+function movePlayers() {
+  movePaddle(player)
+  movePaddle(player2)
+}
+
+function drawHud() {
+  ctx.fillStyle = 'white'
+  ctx.textAlign = 'center'
+
+  ctx.font = 'bold 48px monospace'
+  ctx.fillText(hits, WIDTH / 2, 70)
+
+  ctx.font = '16px monospace'
+  ctx.fillText('HITS', WIDTH / 2, 95)
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+  ctx.fillRect(0, 0, WIDTH, HEIGHT)
+
+  ctx.fillStyle = 'white'
+  ctx.textAlign = 'center'
+
+  ctx.font = 'bold 64px monospace'
+  ctx.fillText('GAME OVER', WIDTH / 2, HEIGHT / 2 - 40)
+
+  ctx.font = '32px monospace'
+  ctx.fillText(`${winner} WINS`, WIDTH / 2, HEIGHT / 2 + 10)
+  ctx.fillText(`${hits} HITS`, WIDTH / 2, HEIGHT / 2 + 55)
+
+  ctx.font = '20px monospace'
+  ctx.fillText('PRESS R TO PLAY AGAIN', WIDTH / 2, HEIGHT / 2 + 110)
+}
+
+function drawBall() {
+  movePlayers()
+
+  if (!winner) {
+    moveBall()
   }
 
   ctx.clearRect(0, 0, 800, 800)
@@ -94,37 +218,18 @@ function drawBall() {
     player2.width,
     player2.height
   )
+
+  drawHud()
+
   ctx.fillStyle = `rgb(${Math.random() * 255}, ${Math.random() * 255}, ${
     Math.random() * 255
   })`
-  // ctx.fillRect(ballX, ballY, ballRadius * 2, ballRadius * 2)
   ctx.beginPath()
   ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2, false)
   ctx.fill()
 
-  const isBallTouchingEdges = ballX > 800 - ballRadius * 2 || ballX < 0
-
-  const isTouchingPlayer =
-    (ballX < player.x + player.width &&
-      ballY > player.y - player.height - ballRadius &&
-      ballY < player.y + player.height + ballRadius) ||
-    (ballX > player2.x - player2.width &&
-      ballY > player2.y - player2.height - ballRadius &&
-      ballY < player2.y + player2.height + ballRadius)
-
-  if (isBallTouchingEdges || isTouchingPlayer) {    
-    playSound(getNoteFrequency(happyBirthdayOverC[happyBirthdayCurrentNoteIndex % happyBirthdayOverC.length]))
-    happyBirthdayCurrentNoteIndex++
-
-    velX *= -1
-  }
-
-  const isBallTouchingTopOrBottom = ballY > 800 - ballRadius * 2 || ballY < 0
-
-  if (isBallTouchingTopOrBottom) {
-    playSound(getNoteFrequency(happyBirthdayOverC[happyBirthdayCurrentNoteIndex % happyBirthdayOverC.length]))
-    happyBirthdayCurrentNoteIndex++
-    velY *= -1
+  if (winner) {
+    drawGameOver()
   }
 }
 
