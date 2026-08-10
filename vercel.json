@@ -1,0 +1,5 @@
+{
+  "installCommand": "pnpm install && node -e \"require('node:fs').writeFileSync('.v0-install-marker','installed-via-vercel-json')\"",
+  "devCommand": "pnpm run dev",
+  "devPort": 4567
+}
