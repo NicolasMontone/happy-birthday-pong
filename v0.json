@@ -1,0 +1,9 @@
+{
+  "$schema": "https://v0.dev/schemas/v0.schema.json",
+  "projects": {
+    ".": {
+      "devCommand": "npm run dev",
+      "port": 3000
+    }
+  }
+}
